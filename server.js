@@ -21,7 +21,7 @@ app.use(express.static(path.join(__dirname)));
 
 // Initialize Google AI
 const PALM_API_KEY = process.env.PALM_API_KEY;
-console.log('API Key status:', PALM_API_KEY ? 'Present' : 'Missing');
+console.log('Starting server with API key status:', PALM_API_KEY ? 'Present' : 'Missing');
 const genAI = new GoogleGenerativeAI(PALM_API_KEY);
 
 // Store connected clients
@@ -82,50 +82,90 @@ app.post('/api/chat', async (req, res) => {
 // Video summarizer endpoint
 app.post('/api/summarize', async (req, res) => {
     try {
-        // Log API key status
-        console.log('Checking API key...');
+        console.log('1. Starting video analysis...');
+        
+        // Check API key
         if (!PALM_API_KEY) {
-            throw new Error('API key is not configured');
+            console.error('API key missing');
+            throw new Error('API key not configured');
         }
+        console.log('2. API key verified');
 
         const { url } = req.body;
-        console.log('Processing URL:', url);
+        if (!url) {
+            throw new Error('No URL provided');
+        }
+        console.log('3. Received URL:', url);
+
+        // Initialize AI
+        console.log('4. Initializing AI...');
+        const genAI = new GoogleGenerativeAI(PALM_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        console.log('5. AI initialized');
 
         // Get video info
+        console.log('6. Getting video info...');
         const videoInfo = await ytdl.getInfo(url);
-        const videoDetails = videoInfo.videoDetails;
+        console.log('7. Video info retrieved');
 
-        // Create content for AI
-        const content = `
-            Video Title: ${videoDetails.title}
-            Channel: ${videoDetails.author.name}
-            Description: ${videoDetails.description}
-            Duration: ${Math.floor(videoDetails.lengthSeconds / 60)} minutes
+        const videoDetails = {
+            title: videoInfo.videoDetails.title,
+            author: videoInfo.videoDetails.author.name,
+            description: videoInfo.videoDetails.description,
+            duration: Math.floor(videoInfo.videoDetails.lengthSeconds / 60)
+        };
+        console.log('8. Video details extracted:', videoDetails);
+
+        // Create prompt
+        const prompt = `
+            Please analyze this YouTube video and provide a detailed summary:
+            
+            Title: ${videoDetails.title}
+            Creator: ${videoDetails.author}
+            Duration: ${videoDetails.duration} minutes
+            
+            Description:
+            ${videoDetails.description}
+            
+            Please provide:
+            1. Main topic
+            2. Key points
+            3. Content overview
+            4. Target audience
         `;
+        console.log('9. Prompt created');
 
-        console.log('Sending to AI for analysis...');
-        
-        // Use Gemini Pro to analyze
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        const result = await model.generateContent(content);
-        
+        // Generate summary
+        console.log('10. Requesting AI summary...');
+        const result = await model.generateContent(prompt);
+        console.log('11. AI response received');
+
         if (!result || !result.response) {
             throw new Error('No response from AI');
         }
 
         const summary = result.response.text();
-        console.log('Summary generated successfully');
+        console.log('12. Summary generated successfully');
 
+        // Send response
         res.json({ 
             summary: summary,
-            status: 'success'
+            status: 'success',
+            videoDetails: videoDetails
         });
+        console.log('13. Response sent to client');
 
     } catch (error) {
-        console.error('Error details:', error);
+        console.error('ERROR DETAILS:', {
+            message: error.message,
+            stack: error.stack,
+            step: 'Failed at step ' + error.step
+        });
+
         res.status(500).json({
             error: 'Failed to analyze video',
-            details: error.message
+            details: error.message,
+            step: error.step || 'unknown'
         });
     }
 });
