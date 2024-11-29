@@ -191,6 +191,14 @@
     </div>
 
     <script>
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            document.getElementById('loading').style.display = 'none';
+            console.error('Summarization error:', message);
+        }
+
         async function summarizeVideo() {
             const videoUrl = document.getElementById('videoUrl').value;
             if (!videoUrl) {
@@ -205,6 +213,7 @@
             document.getElementById('summarySection').style.display = 'none';
 
             try {
+                // Use the current domain
                 const response = await fetch('/api/summarize', {
                     method: 'POST',
                     headers: {
@@ -213,17 +222,14 @@
                     body: JSON.stringify({ url: videoUrl })
                 });
 
-                const data = await response.json();
-
-                if (data.error) {
-                    showError(data.error);
-                    return;
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to generate summary');
                 }
 
-                // Show summary with video title
+                const data = await response.json();
                 const summarySection = document.getElementById('summarySection');
                 summarySection.innerHTML = `
-                    <h2>${data.videoTitle}</h2>
                     <div class="summary-content">
                         ${data.summary}
                     </div>
@@ -231,17 +237,11 @@
                 summarySection.style.display = 'block';
 
             } catch (error) {
-                showError('Failed to generate summary. Please try again.');
+                console.error('Full error:', error);
+                showError(error.message || 'Failed to generate summary. Please try again.');
             } finally {
                 document.getElementById('loading').style.display = 'none';
             }
-        }
-
-        function showError(message) {
-            const errorDiv = document.getElementById('error');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            document.getElementById('loading').style.display = 'none';
         }
 
         // Add Enter key support
