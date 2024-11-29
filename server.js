@@ -20,7 +20,9 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
 // Initialize Google AI
-const genAI = new GoogleGenerativeAI(process.env.PALM_API_KEY);
+const PALM_API_KEY = process.env.PALM_API_KEY;
+console.log('API Key status:', PALM_API_KEY ? 'Present' : 'Missing');
+const genAI = new GoogleGenerativeAI(PALM_API_KEY);
 
 // Store connected clients
 const clients = new Set();
@@ -80,119 +82,50 @@ app.post('/api/chat', async (req, res) => {
 // Video summarizer endpoint
 app.post('/api/summarize', async (req, res) => {
     try {
-        // Check API key first
-        if (!process.env.PALM_API_KEY) {
-            console.error('API Key missing in environment');
-            return res.status(500).json({
-                error: 'Server configuration error',
-                details: 'API key not configured'
-            });
+        // Log API key status
+        console.log('Checking API key...');
+        if (!PALM_API_KEY) {
+            throw new Error('API key is not configured');
         }
 
         const { url } = req.body;
-        console.log('Starting video analysis for:', url);
-        console.log('API Key status:', process.env.PALM_API_KEY ? 'Present' : 'Missing');
+        console.log('Processing URL:', url);
 
-        // Validate URL
-        if (!ytdl.validateURL(url)) {
-            console.log('Invalid URL provided');
-            return res.status(400).json({
-                error: 'Please provide a valid YouTube URL'
-            });
-        }
+        // Get video info
+        const videoInfo = await ytdl.getInfo(url);
+        const videoDetails = videoInfo.videoDetails;
 
-        // Get video ID and info
-        const videoId = ytdl.getVideoID(url);
-        console.log('Fetching info for video ID:', videoId);
-        
-        const videoInfo = await ytdl.getInfo(videoId);
-        console.log('Successfully fetched video info');
-
-        // Extract video details
-        const {
-            title: videoTitle,
-            description,
-            keywords: tags = [],
-            author,
-            viewCount,
-            lengthSeconds
-        } = videoInfo.videoDetails;
-
-        // Format duration
-        const minutes = Math.floor(lengthSeconds / 60);
-        const seconds = lengthSeconds % 60;
-        const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-        // Create context for AI
-        const context = `
-            Title: ${videoTitle}
-            Creator: ${author.name}
-            Duration: ${duration}
-            Views: ${viewCount}
-            Description: ${description}
-            Tags: ${tags.join(', ')}
+        // Create content for AI
+        const content = `
+            Video Title: ${videoDetails.title}
+            Channel: ${videoDetails.author.name}
+            Description: ${videoDetails.description}
+            Duration: ${Math.floor(videoDetails.lengthSeconds / 60)} minutes
         `;
 
-        console.log('Preparing AI analysis...');
+        console.log('Sending to AI for analysis...');
+        
+        // Use Gemini Pro to analyze
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        
-        const prompt = `
-            Analyze this YouTube video information and provide a detailed summary:
-            ${context}
-
-            Format your response as follows:
-
-            VIDEO SUMMARY
-            Title: ${videoTitle}
-            Creator: ${author.name}
-            Duration: ${duration}
-
-            MAIN TOPIC:
-            [Main subject matter of the video]
-
-            KEY POINTS:
-            - [Key point 1]
-            - [Key point 2]
-            - [Key point 3]
-
-            CONTENT OVERVIEW:
-            [Detailed overview based on description]
-
-            ENGAGEMENT:
-            Views: ${viewCount}
-            Estimated Audience: [Target audience based on content]
-        `;
-
-        console.log('Generating AI summary...');
-        const result = await model.generateContent(prompt);
+        const result = await model.generateContent(content);
         
         if (!result || !result.response) {
-            throw new Error('Failed to generate summary');
+            throw new Error('No response from AI');
         }
 
         const summary = result.response.text();
         console.log('Summary generated successfully');
 
-        // Send successful response
-        res.json({
+        res.json({ 
             summary: summary,
-            status: 'success',
-            videoInfo: {
-                title: videoTitle,
-                creator: author.name,
-                duration: duration,
-                views: viewCount
-            }
+            status: 'success'
         });
 
     } catch (error) {
-        console.error('Error during video analysis:', error);
-        
-        // Send appropriate error response
+        console.error('Error details:', error);
         res.status(500).json({
             error: 'Failed to analyze video',
-            details: error.message,
-            suggestion: 'Please try again or use a different video'
+            details: error.message
         });
     }
 });
