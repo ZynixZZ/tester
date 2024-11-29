@@ -1,70 +1,44 @@
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { YoutubeTranscript } = require('youtube-transcript');
 const ytdl = require('ytdl-core');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
 
 const app = express();
 
-// Enable CORS
+// Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
-
-// Use environment variables from your hosting platform
-const PORT = process.env.PORT || 3000;
-const PALM_API_KEY = process.env.PALM_API_KEY;
+app.use(express.static(__dirname));
 
 // Initialize Google AI
-const genAI = new GoogleGenerativeAI(PALM_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.PALM_API_KEY);
 
-// Chat endpoint
-app.post('/api/chat', async (req, res) => {
-    try {
-        console.log('Received chat request:', req.body);
-
-        if (!req.body.message) {
-            return res.status(400).json({ error: 'Message is required' });
-        }
-
-        // Initialize the model
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-
-        // Generate response
-        const result = await model.generateContent(req.body.message);
-        const response = result.response.text();
-
-        console.log('AI Response:', response);
-        res.json({ response: response });
-
-    } catch (error) {
-        console.error('Chat error:', error);
-        res.status(500).json({ 
-            error: 'Failed to process chat request',
-            details: error.message 
-        });
-    }
-});
-
-// Video summarizer endpoint
+// Define the summarize endpoint
 app.post('/api/summarize', async (req, res) => {
     try {
         const { url } = req.body;
-        console.log('Processing URL:', url);
+        console.log('Received URL:', url);
 
-        // Validate URL
+        // Check API key
+        if (!process.env.PALM_API_KEY) {
+            throw new Error('API key is not configured');
+        }
+
+        // Validate YouTube URL
         if (!ytdl.validateURL(url)) {
             throw new Error('Invalid YouTube URL');
         }
 
         // Extract video ID
         const videoId = ytdl.getVideoID(url);
-        console.log('Video ID:', videoId);
+        console.log('Processing video ID:', videoId);
 
         // Get transcript
+        console.log('Fetching transcript...');
         const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+        
         if (!transcript || transcript.length === 0) {
             throw new Error('No transcript available for this video');
         }
@@ -72,35 +46,50 @@ app.post('/api/summarize', async (req, res) => {
         const fullText = transcript.map(part => part.text).join(' ');
         console.log('Transcript length:', fullText.length);
 
-        // Use Gemini to generate summary
+        // Initialize AI
+        console.log('Initializing AI...');
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        
-        const prompt = `
-            Please provide a comprehensive summary of this video transcript:
-            ${fullText}
-            
-            Format the summary with:
-            1. Main Topic
-            2. Key Points
-            3. Important Details
-            4. Learning Steps
-        `;
 
-        const result = await model.generateContent(prompt);
+        // Generate summary
+        console.log('Generating summary...');
+        const result = await model.generateContent({
+            contents: [{
+                role: "user",
+                parts: [{ text: `Please summarize this video transcript and provide learning steps: ${fullText}` }]
+            }]
+        });
+
         const summary = result.response.text();
-        console.log('Summary generated');
+        console.log('Summary generated successfully');
 
-        res.json({ summary });
+        res.json({ 
+            summary: summary,
+            status: 'success'
+        });
 
     } catch (error) {
-        console.error('Summarization error:', error);
+        console.error('Detailed error:', error);
+        let errorMessage = 'Failed to generate summary';
+
+        if (error.message.includes('API key')) {
+            errorMessage = 'API configuration error';
+        } else if (error.message.includes('Invalid YouTube URL')) {
+            errorMessage = 'Please enter a valid YouTube URL';
+        } else if (error.message.includes('transcript')) {
+            errorMessage = 'No captions available for this video';
+        }
+
         res.status(500).json({ 
-            error: 'Failed to summarize video',
+            error: errorMessage,
             details: error.message 
         });
     }
 });
 
+// Start server
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log('API endpoints:');
+    console.log(`- POST /api/summarize`);
 });
