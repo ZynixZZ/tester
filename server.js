@@ -82,90 +82,92 @@ app.post('/api/chat', async (req, res) => {
 // Video summarizer endpoint
 app.post('/api/summarize', async (req, res) => {
     try {
-        console.log('1. Starting video analysis...');
-        
-        // Check API key
-        if (!PALM_API_KEY) {
-            console.error('API key missing');
-            throw new Error('API key not configured');
-        }
-        console.log('2. API key verified');
-
         const { url } = req.body;
-        if (!url) {
-            throw new Error('No URL provided');
+        console.log('Processing URL:', url);
+
+        // Validate URL
+        if (!ytdl.validateURL(url)) {
+            throw new Error('Invalid YouTube URL');
         }
-        console.log('3. Received URL:', url);
 
-        // Initialize AI
-        console.log('4. Initializing AI...');
-        const genAI = new GoogleGenerativeAI(PALM_API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        console.log('5. AI initialized');
+        // Get basic info first
+        const videoId = ytdl.getVideoID(url);
+        console.log('Video ID:', videoId);
 
-        // Get video info
-        console.log('6. Getting video info...');
-        const videoInfo = await ytdl.getInfo(url);
-        console.log('7. Video info retrieved');
-
-        const videoDetails = {
-            title: videoInfo.videoDetails.title,
-            author: videoInfo.videoDetails.author.name,
-            description: videoInfo.videoDetails.description,
-            duration: Math.floor(videoInfo.videoDetails.lengthSeconds / 60)
+        const options = {
+            requestOptions: {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            }
         };
-        console.log('8. Video details extracted:', videoDetails);
 
-        // Create prompt
-        const prompt = `
-            Please analyze this YouTube video and provide a detailed summary:
-            
-            Title: ${videoDetails.title}
-            Creator: ${videoDetails.author}
-            Duration: ${videoDetails.duration} minutes
-            
-            Description:
-            ${videoDetails.description}
-            
-            Please provide:
-            1. Main topic
-            2. Key points
-            3. Content overview
-            4. Target audience
-        `;
-        console.log('9. Prompt created');
+        try {
+            console.log('Fetching video info...');
+            const videoInfo = await ytdl.getBasicInfo(url, options);
+            console.log('Video info fetched successfully');
 
-        // Generate summary
-        console.log('10. Requesting AI summary...');
-        const result = await model.generateContent(prompt);
-        console.log('11. AI response received');
+            const videoDetails = {
+                title: videoInfo.videoDetails.title || 'Unknown Title',
+                author: videoInfo.videoDetails.author?.name || 'Unknown Author',
+                description: videoInfo.videoDetails.description || 'No description available',
+                duration: videoInfo.videoDetails.lengthSeconds || 0,
+                views: videoInfo.videoDetails.viewCount || 0
+            };
 
-        if (!result || !result.response) {
-            throw new Error('No response from AI');
+            // Initialize AI
+            console.log('Preparing AI analysis...');
+            const genAI = new GoogleGenerativeAI(PALM_API_KEY);
+            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+            const prompt = `
+                Please analyze this YouTube video information:
+                
+                TITLE: ${videoDetails.title}
+                CREATOR: ${videoDetails.author}
+                DURATION: ${Math.floor(videoDetails.duration / 60)} minutes
+                VIEWS: ${videoDetails.views}
+                
+                DESCRIPTION:
+                ${videoDetails.description}
+                
+                Please provide a comprehensive analysis including:
+                1. Main Topic/Theme
+                2. Key Points
+                3. Content Overview
+                4. Target Audience
+                5. Value Proposition
+                
+                Format it in a clear, readable way.
+            `;
+
+            console.log('Generating AI summary...');
+            const result = await model.generateContent(prompt);
+            
+            if (!result || !result.response) {
+                throw new Error('Failed to generate AI response');
+            }
+
+            const summary = result.response.text();
+            console.log('Summary generated successfully');
+
+            res.json({
+                summary: summary,
+                videoDetails: videoDetails,
+                status: 'success'
+            });
+
+        } catch (infoError) {
+            console.error('Info fetch error:', infoError);
+            throw new Error(`Failed to fetch video info: ${infoError.message}`);
         }
-
-        const summary = result.response.text();
-        console.log('12. Summary generated successfully');
-
-        // Send response
-        res.json({ 
-            summary: summary,
-            status: 'success',
-            videoDetails: videoDetails
-        });
-        console.log('13. Response sent to client');
 
     } catch (error) {
-        console.error('ERROR DETAILS:', {
-            message: error.message,
-            stack: error.stack,
-            step: 'Failed at step ' + error.step
-        });
-
+        console.error('Error during video analysis:', error);
         res.status(500).json({
             error: 'Failed to analyze video',
             details: error.message,
-            step: error.step || 'unknown'
+            suggestion: 'Please try a different video or check the URL'
         });
     }
 });
