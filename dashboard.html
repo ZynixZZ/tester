@@ -600,30 +600,16 @@
         });
 
         async function askAI() {
-            const question = document.getElementById('ai-question').value;
-            if (!question) return;
-
-            const chatHistory = document.getElementById('chat-history');
-            chatHistory.innerHTML += `
-                <div class="message user">
-                    <strong>You:</strong><br>${question}
-                </div>
-            `;
+            const userInput = document.getElementById('aiInput').value;
+            if (!userInput) return;
 
             try {
-                // Show loading message
-                chatHistory.innerHTML += `
-                    <div class="message ai" id="loading-message">
-                        <strong>AI:</strong><br>Thinking...
-                    </div>
-                `;
-
-                const response = await fetch('/api/chat', {
+                const response = await fetch('/api/ai-chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ message: question })
+                    body: JSON.stringify({ message: userInput })
                 });
 
                 if (!response.ok) {
@@ -631,35 +617,15 @@
                 }
 
                 const data = await response.json();
+                displayMessage(userInput, 'You', true);
+                displayMessage(data.response, 'AI Assistant', false);
                 
-                // Remove loading message
-                document.getElementById('loading-message').remove();
-
-                // Add AI response
-                chatHistory.innerHTML += `
-                    <div class="message ai">
-                        <strong>AI:</strong><br>${data.response}
-                    </div>
-                `;
+                document.getElementById('aiInput').value = '';
 
             } catch (error) {
                 console.error('Chat error:', error);
-                // Remove loading message if it exists
-                const loadingMessage = document.getElementById('loading-message');
-                if (loadingMessage) {
-                    loadingMessage.remove();
-                }
-
-                // Show error message
-                chatHistory.innerHTML += `
-                    <div class="message error">
-                        <strong>Error:</strong><br>Sorry, there was an error processing your request.
-                    </div>
-                `;
+                displayMessage('Sorry, I encountered an error. Please try again.', 'AI Assistant', false);
             }
-
-            // Clear input
-            document.getElementById('ai-question').value = '';
         }
 
         // Add Enter key support

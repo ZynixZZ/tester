@@ -1,17 +1,31 @@
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cors = require('cors');
-const app = express();  // Initialize Express app FIRST
+const path = require('path');
+const app = express();
 require('dotenv').config();
 
 // Middleware setup
 app.use(cors());
 app.use(express.json());
-app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname)));
 
-// Initialize API key
-const PALM_API_KEY = process.env.PALM_API_KEY;
-console.log('API Key status:', PALM_API_KEY ? 'Present' : 'Missing');
+// Serve static files
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.get('/signup', (req, res) => {
+    res.sendFile(path.join(__dirname, 'signup.html'));
+});
+
+app.get('/dashboard', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dashboard.html'));
+});
+
+app.get('/video-summarizer', (req, res) => {
+    res.sendFile(path.join(__dirname, 'video-summarizer.html'));
+});
 
 // API endpoints
 app.post('/api/summarize', async (req, res) => {
@@ -84,7 +98,12 @@ app.post('/api/summarize', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log('Available routes:');
+    console.log('- / (index)');
+    console.log('- /signup');
+    console.log('- /dashboard');
+    console.log('- /video-summarizer');
+    console.log('- /api/summarize (POST)');
 });
 
-// Export app for testing
 module.exports = app;
