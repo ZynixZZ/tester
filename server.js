@@ -4,6 +4,7 @@ const { YoutubeTranscript } = require('youtube-transcript');
 const ytdl = require('ytdl-core');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
+const util = require('util');
 
 const app = express();
 
@@ -21,13 +22,23 @@ app.post('/api/summarize', async (req, res) => {
         const { url } = req.body;
         console.log('Received URL:', url);
 
+        // Check if URL is provided
+        if (!url) {
+            throw new Error('No URL provided');
+        }
+
         // Check API key
         if (!process.env.PALM_API_KEY) {
+            console.error('API Key missing or invalid');
             throw new Error('API key is not configured');
         }
 
+        // Log API key status (don't log the actual key!)
+        console.log('API Key status:', process.env.PALM_API_KEY ? 'Present' : 'Missing');
+
         // Validate YouTube URL
         if (!ytdl.validateURL(url)) {
+            console.error('Invalid YouTube URL:', url);
             throw new Error('Invalid YouTube URL');
         }
 
@@ -35,40 +46,43 @@ app.post('/api/summarize', async (req, res) => {
         const videoId = ytdl.getVideoID(url);
         console.log('Processing video ID:', videoId);
 
-        // Get transcript
-        console.log('Fetching transcript...');
-        const transcript = await YoutubeTranscript.fetchTranscript(videoId);
-        
-        if (!transcript || transcript.length === 0) {
-            throw new Error('No transcript available for this video');
+        try {
+            // Get transcript
+            console.log('Fetching transcript...');
+            const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+            console.log('Transcript fetched:', transcript ? 'Success' : 'Failed');
+            
+            if (!transcript || transcript.length === 0) {
+                throw new Error('No transcript available for this video');
+            }
+
+            const fullText = transcript.map(part => part.text).join(' ');
+            console.log('Transcript length:', fullText.length);
+
+            // Initialize AI
+            console.log('Initializing AI model...');
+            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+            // Generate summary
+            console.log('Generating summary...');
+            const result = await model.generateContent(fullText);
+            console.log('AI response received');
+
+            const summary = result.response.text();
+            console.log('Summary generated successfully');
+
+            res.json({ 
+                summary: summary,
+                status: 'success'
+            });
+
+        } catch (transcriptError) {
+            console.error('Transcript or AI error:', util.inspect(transcriptError));
+            throw transcriptError;
         }
 
-        const fullText = transcript.map(part => part.text).join(' ');
-        console.log('Transcript length:', fullText.length);
-
-        // Initialize AI
-        console.log('Initializing AI...');
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-
-        // Generate summary
-        console.log('Generating summary...');
-        const result = await model.generateContent({
-            contents: [{
-                role: "user",
-                parts: [{ text: `Please summarize this video transcript and provide learning steps: ${fullText}` }]
-            }]
-        });
-
-        const summary = result.response.text();
-        console.log('Summary generated successfully');
-
-        res.json({ 
-            summary: summary,
-            status: 'success'
-        });
-
     } catch (error) {
-        console.error('Detailed error:', error);
+        console.error('Detailed error:', util.inspect(error));
         let errorMessage = 'Failed to generate summary';
 
         if (error.message.includes('API key')) {
@@ -81,7 +95,8 @@ app.post('/api/summarize', async (req, res) => {
 
         res.status(500).json({ 
             error: errorMessage,
-            details: error.message 
+            details: error.message,
+            stack: error.stack
         });
     }
 });
