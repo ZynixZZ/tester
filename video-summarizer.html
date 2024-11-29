@@ -201,12 +201,11 @@
             // Show loading
             const loadingElement = document.getElementById('loading');
             loadingElement.style.display = 'block';
-            loadingElement.textContent = 'Analyzing video content...';
+            loadingElement.textContent = 'Analyzing video...';
             document.getElementById('error').style.display = 'none';
             document.getElementById('summarySection').style.display = 'none';
 
             try {
-                console.log('Sending request for URL:', videoUrl);
                 const response = await fetch('/api/summarize', {
                     method: 'POST',
                     headers: {
@@ -215,16 +214,10 @@
                     body: JSON.stringify({ url: videoUrl })
                 });
 
-                console.log('Response status:', response.status);
                 const data = await response.json();
-                console.log('Response data:', data);
 
                 if (!response.ok) {
-                    throw new Error(data.error || 'Failed to generate summary');
-                }
-
-                if (data.error) {
-                    throw new Error(data.error);
+                    throw new Error(data.error || 'Failed to analyze video');
                 }
 
                 const summarySection = document.getElementById('summarySection');
@@ -236,8 +229,8 @@
                 summarySection.style.display = 'block';
 
             } catch (error) {
-                console.error('Full error:', error);
-                showError(error.message || 'Failed to generate summary. Please try again.');
+                console.error('Error:', error);
+                showError(error.message || 'Failed to analyze video. Please try again.');
             } finally {
                 loadingElement.style.display = 'none';
             }
@@ -247,7 +240,6 @@
             const errorDiv = document.getElementById('error');
             errorDiv.textContent = message;
             errorDiv.style.display = 'block';
-            console.error('Summarization error:', message);
         }
 
         // Add Enter key support
