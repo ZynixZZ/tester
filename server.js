@@ -12,10 +12,7 @@ const app = express();
 const server = http.createServer(app);
 
 // Create WebSocket server attached to HTTP server
-const wss = new WebSocket.Server({ 
-    server: server,
-    path: '/ws'  // Add specific path for WebSocket
-});
+const wss = new WebSocket.Server({ server });
 
 // Middleware
 app.use(cors());
