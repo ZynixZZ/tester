@@ -1,4 +1,6 @@
 const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
 const cors = require('cors');
 const path = require('path');
 const { YoutubeTranscript } = require('youtube-transcript');
@@ -7,6 +9,13 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
 
 const app = express();
+const server = http.createServer(app);
+
+// Create WebSocket server attached to HTTP server
+const wss = new WebSocket.Server({ 
+    server: server,
+    path: '/ws'  // Add specific path for WebSocket
+});
 
 // Middleware
 app.use(cors());
@@ -15,6 +24,40 @@ app.use(express.static(path.join(__dirname)));
 
 // Initialize Google AI
 const genAI = new GoogleGenerativeAI(process.env.PALM_API_KEY);
+
+// Store connected clients
+const clients = new Set();
+
+// WebSocket connection handling
+wss.on('connection', (ws) => {
+    console.log('New client connected');
+    clients.add(ws);
+
+    ws.on('message', (data) => {
+        try {
+            const messageData = JSON.parse(data);
+            console.log('Received message:', messageData);
+            
+            // Broadcast to all clients
+            clients.forEach((client) => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify(messageData));
+                }
+            });
+        } catch (error) {
+            console.error('WebSocket message error:', error);
+        }
+    });
+
+    ws.on('close', () => {
+        console.log('Client disconnected');
+        clients.delete(ws);
+    });
+
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
+    });
+});
 
 // Chat endpoint
 app.post('/api/chat', async (req, res) => {
@@ -137,9 +180,7 @@ app.post('/api/summarize', async (req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    console.log('Available endpoints:');
-    console.log('- POST /api/chat');
-    console.log('- POST /api/summarize');
+    console.log(`WebSocket server running on ws://localhost:${PORT}/ws`);
 });
