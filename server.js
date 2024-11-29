@@ -3,9 +3,13 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cors = require('cors');
 require('dotenv').config();
 
+// Create Express app
 const app = express();
+
+// Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.static(__dirname));
 
 const PALM_API_KEY = process.env.PALM_API_KEY;
 console.log('API Key status:', PALM_API_KEY ? 'Present' : 'Missing');
