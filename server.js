@@ -80,8 +80,18 @@ app.post('/api/chat', async (req, res) => {
 // Video summarizer endpoint
 app.post('/api/summarize', async (req, res) => {
     try {
+        // Check API key first
+        if (!process.env.PALM_API_KEY) {
+            console.error('API Key missing in environment');
+            return res.status(500).json({
+                error: 'Server configuration error',
+                details: 'API key not configured'
+            });
+        }
+
         const { url } = req.body;
         console.log('Starting video analysis for:', url);
+        console.log('API Key status:', process.env.PALM_API_KEY ? 'Present' : 'Missing');
 
         // Validate URL
         if (!ytdl.validateURL(url)) {
