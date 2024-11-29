@@ -20,7 +20,7 @@ const genAI = new GoogleGenerativeAI(process.env.PALM_API_KEY);
 app.post('/api/summarize', async (req, res) => {
     try {
         const { url } = req.body;
-        console.log('Received URL:', url);
+        console.log('Starting summarization for URL:', url);
 
         // Check if URL is provided
         if (!url) {
@@ -29,7 +29,7 @@ app.post('/api/summarize', async (req, res) => {
 
         // Check API key
         if (!process.env.PALM_API_KEY) {
-            console.error('API Key missing or invalid');
+            console.error('API Key missing');
             throw new Error('API key is not configured');
         }
 
@@ -41,55 +41,75 @@ app.post('/api/summarize', async (req, res) => {
 
         // Extract video ID
         const videoId = ytdl.getVideoID(url);
-        console.log('Processing video ID:', videoId);
+        console.log('Video ID:', videoId);
 
-        try {
-            // Get transcript
-            console.log('Fetching transcript...');
-            const transcript = await YoutubeTranscript.fetchTranscript(videoId);
-            
-            if (!transcript || transcript.length === 0) {
-                throw new Error('No transcript available for this video');
-            }
+        // Get transcript
+        console.log('Fetching transcript...');
+        const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+        console.log('Transcript fetched successfully');
 
-            const fullText = transcript.map(part => part.text).join(' ');
-            console.log('Transcript length:', fullText.length);
-
-            // Initialize AI
-            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-            const result = await model.generateContent(fullText);
-            const summary = result.response.text();
-
-            res.json({ 
-                summary: summary,
-                status: 'success'
-            });
-
-        } catch (transcriptError) {
-            console.error('Transcript error:', transcriptError);
-            if (transcriptError.message.includes('Transcript is disabled')) {
-                throw new Error('This video does not have captions enabled. Please try a different video with captions.');
-            }
-            throw transcriptError;
+        if (!transcript || transcript.length === 0) {
+            throw new Error('No transcript available');
         }
 
+        const fullText = transcript.map(part => part.text).join(' ');
+        console.log('Transcript length:', fullText.length, 'characters');
+
+        // Initialize AI
+        console.log('Initializing AI model...');
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+        // Prepare prompt
+        const prompt = `Please summarize this video transcript in a clear and organized way:
+            ${fullText.substring(0, 30000)} // Limit text length to avoid token limits
+            
+            Please format the summary as follows:
+            1. Main Topic
+            2. Key Points
+            3. Summary
+            4. Important Details`;
+
+        // Generate summary
+        console.log('Generating summary...');
+        const result = await model.generateContent(prompt);
+        console.log('AI response received');
+
+        if (!result || !result.response) {
+            throw new Error('Failed to generate AI response');
+        }
+
+        const summary = result.response.text();
+        console.log('Summary generated successfully, length:', summary.length);
+
+        res.json({ 
+            summary: summary,
+            status: 'success',
+            videoId: videoId
+        });
+
     } catch (error) {
-        console.error('Error:', error.message);
+        console.error('Detailed error:', error);
         let errorMessage = 'Failed to generate summary';
 
         if (error.message.includes('API key')) {
             errorMessage = 'API configuration error';
         } else if (error.message.includes('Invalid YouTube URL')) {
             errorMessage = 'Please enter a valid YouTube URL';
-        } else if (error.message.includes('captions enabled')) {
-            errorMessage = error.message;
+        } else if (error.message.includes('Transcript is disabled')) {
+            errorMessage = 'This video does not have captions enabled. Please try a video with captions.';
         } else if (error.message.includes('transcript')) {
             errorMessage = 'No captions available for this video';
         }
 
+        // Log the full error details
+        console.error('Error type:', error.constructor.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+
         res.status(500).json({ 
             error: errorMessage,
-            details: error.message
+            details: error.message,
+            type: error.constructor.name
         });
     }
 });

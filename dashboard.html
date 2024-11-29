@@ -714,9 +714,10 @@
         const currentUser = 'User-' + Math.floor(Math.random() * 1000);
 
         function connectWebSocket() {
-            // Auto-detect secure connections
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}`;
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            console.log('Connecting to WebSocket:', wsUrl);
             ws = new WebSocket(wsUrl);
             
             ws.onopen = () => {
@@ -728,7 +729,6 @@
                 try {
                     console.log('Received message:', event.data);
                     const data = JSON.parse(event.data);
-                    // Only display messages from other users
                     if (data.sender !== currentUser) {
                         displayMessage(data.message, data.sender, false);
                     }
@@ -739,6 +739,7 @@
 
             ws.onclose = () => {
                 console.log('Disconnected from chat server');
+                // Try to reconnect after 3 seconds
                 setTimeout(connectWebSocket, 3000);
             };
 
