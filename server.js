@@ -1,22 +1,43 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { YoutubeTranscript } = require('youtube-transcript');
 const ytdl = require('ytdl-core');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
-const util = require('util');
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname)));
 
 // Initialize Google AI
 const genAI = new GoogleGenerativeAI(process.env.PALM_API_KEY);
 
-// Define the summarize endpoint
+// Chat endpoint
+app.post('/api/chat', async (req, res) => {
+    try {
+        if (!req.body.message) {
+            throw new Error('Message is required');
+        }
+
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        const result = await model.generateContent(req.body.message);
+        const response = result.response.text();
+
+        res.json({ response: response });
+    } catch (error) {
+        console.error('Chat error:', error);
+        res.status(500).json({ 
+            error: 'Failed to process chat request',
+            details: error.message 
+        });
+    }
+});
+
+// Video summarizer endpoint
 app.post('/api/summarize', async (req, res) => {
     try {
         const { url } = req.body;
@@ -118,6 +139,7 @@ app.post('/api/summarize', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    console.log('API endpoints:');
-    console.log(`- POST /api/summarize`);
+    console.log('Available endpoints:');
+    console.log('- POST /api/chat');
+    console.log('- POST /api/summarize');
 });
