@@ -33,9 +33,6 @@ app.post('/api/summarize', async (req, res) => {
             throw new Error('API key is not configured');
         }
 
-        // Log API key status (don't log the actual key!)
-        console.log('API Key status:', process.env.PALM_API_KEY ? 'Present' : 'Missing');
-
         // Validate YouTube URL
         if (!ytdl.validateURL(url)) {
             console.error('Invalid YouTube URL:', url);
@@ -50,7 +47,6 @@ app.post('/api/summarize', async (req, res) => {
             // Get transcript
             console.log('Fetching transcript...');
             const transcript = await YoutubeTranscript.fetchTranscript(videoId);
-            console.log('Transcript fetched:', transcript ? 'Success' : 'Failed');
             
             if (!transcript || transcript.length === 0) {
                 throw new Error('No transcript available for this video');
@@ -60,16 +56,9 @@ app.post('/api/summarize', async (req, res) => {
             console.log('Transcript length:', fullText.length);
 
             // Initialize AI
-            console.log('Initializing AI model...');
             const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-
-            // Generate summary
-            console.log('Generating summary...');
             const result = await model.generateContent(fullText);
-            console.log('AI response received');
-
             const summary = result.response.text();
-            console.log('Summary generated successfully');
 
             res.json({ 
                 summary: summary,
@@ -77,26 +66,30 @@ app.post('/api/summarize', async (req, res) => {
             });
 
         } catch (transcriptError) {
-            console.error('Transcript or AI error:', util.inspect(transcriptError));
+            console.error('Transcript error:', transcriptError);
+            if (transcriptError.message.includes('Transcript is disabled')) {
+                throw new Error('This video does not have captions enabled. Please try a different video with captions.');
+            }
             throw transcriptError;
         }
 
     } catch (error) {
-        console.error('Detailed error:', util.inspect(error));
+        console.error('Error:', error.message);
         let errorMessage = 'Failed to generate summary';
 
         if (error.message.includes('API key')) {
             errorMessage = 'API configuration error';
         } else if (error.message.includes('Invalid YouTube URL')) {
             errorMessage = 'Please enter a valid YouTube URL';
+        } else if (error.message.includes('captions enabled')) {
+            errorMessage = error.message;
         } else if (error.message.includes('transcript')) {
             errorMessage = 'No captions available for this video';
         }
 
         res.status(500).json({ 
             error: errorMessage,
-            details: error.message,
-            stack: error.stack
+            details: error.message
         });
     }
 });
