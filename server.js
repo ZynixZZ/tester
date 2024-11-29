@@ -3,7 +3,6 @@ const http = require('http');
 const WebSocket = require('ws');
 const cors = require('cors');
 const path = require('path');
-const { YoutubeTranscript } = require('youtube-transcript');
 const ytdl = require('ytdl-core');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const fs = require('fs');
@@ -82,86 +81,108 @@ app.post('/api/chat', async (req, res) => {
 app.post('/api/summarize', async (req, res) => {
     try {
         const { url } = req.body;
-        console.log('Processing URL:', url);
+        console.log('Starting video analysis for:', url);
 
+        // Validate URL
         if (!ytdl.validateURL(url)) {
-            throw new Error('Invalid YouTube URL');
+            console.log('Invalid URL provided');
+            return res.status(400).json({
+                error: 'Please provide a valid YouTube URL'
+            });
         }
 
+        // Get video ID and info
         const videoId = ytdl.getVideoID(url);
-        console.log('Video ID:', videoId);
-
-        // Get video info
-        console.log('Fetching video info...');
+        console.log('Fetching info for video ID:', videoId);
+        
         const videoInfo = await ytdl.getInfo(videoId);
-        
-        // Extract all available information
-        const videoTitle = videoInfo.videoDetails.title;
-        const description = videoInfo.videoDetails.description;
-        const tags = videoInfo.videoDetails.keywords || [];
-        const author = videoInfo.videoDetails.author.name;
-        const viewCount = videoInfo.videoDetails.viewCount;
-        const lengthSeconds = videoInfo.videoDetails.lengthSeconds;
-        
-        // Create rich context
+        console.log('Successfully fetched video info');
+
+        // Extract video details
+        const {
+            title: videoTitle,
+            description,
+            keywords: tags = [],
+            author,
+            viewCount,
+            lengthSeconds
+        } = videoInfo.videoDetails;
+
+        // Format duration
+        const minutes = Math.floor(lengthSeconds / 60);
+        const seconds = lengthSeconds % 60;
+        const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+        // Create context for AI
         const context = `
-            Video Title: ${videoTitle}
-            Author: ${author}
-            Duration: ${Math.floor(lengthSeconds / 60)}:${lengthSeconds % 60} minutes
+            Title: ${videoTitle}
+            Creator: ${author.name}
+            Duration: ${duration}
             Views: ${viewCount}
             Description: ${description}
             Tags: ${tags.join(', ')}
         `;
 
-        console.log('Generating summary...');
+        console.log('Preparing AI analysis...');
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         
         const prompt = `
-            As an AI assistant, please analyze this YouTube video information and provide a comprehensive summary:
+            Analyze this YouTube video information and provide a detailed summary:
             ${context}
-            
-            Please format your response as follows:
-            
-            TITLE: [Video Title]
-            CREATOR: [Channel Name]
-            
+
+            Format your response as follows:
+
+            VIDEO SUMMARY
+            Title: ${videoTitle}
+            Creator: ${author.name}
+            Duration: ${duration}
+
             MAIN TOPIC:
-            [Explain the main subject matter]
-            
+            [Main subject matter of the video]
+
             KEY POINTS:
-            - [Point 1]
-            - [Point 2]
-            - [Point 3]
-            
+            - [Key point 1]
+            - [Key point 2]
+            - [Key point 3]
+
             CONTENT OVERVIEW:
-            [Provide a brief overview based on the description]
-            
-            AUDIENCE ENGAGEMENT:
-            [Mention views and any relevant metrics]
-            
-            Please make the summary informative and well-structured.
+            [Detailed overview based on description]
+
+            ENGAGEMENT:
+            Views: ${viewCount}
+            Estimated Audience: [Target audience based on content]
         `;
 
+        console.log('Generating AI summary...');
         const result = await model.generateContent(prompt);
-        const summary = result.response.text();
         
+        if (!result || !result.response) {
+            throw new Error('Failed to generate summary');
+        }
+
+        const summary = result.response.text();
         console.log('Summary generated successfully');
-        res.json({ 
+
+        // Send successful response
+        res.json({
             summary: summary,
             status: 'success',
             videoInfo: {
                 title: videoTitle,
-                author: author,
-                duration: `${Math.floor(lengthSeconds / 60)}:${lengthSeconds % 60}`,
+                creator: author.name,
+                duration: duration,
                 views: viewCount
             }
         });
 
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error during video analysis:', error);
+        
+        // Send appropriate error response
         res.status(500).json({
-            error: 'Failed to summarize video',
-            details: error.message
+            error: 'Failed to analyze video',
+            details: error.message,
+            suggestion: 'Please try again or use a different video'
         });
     }
 });
