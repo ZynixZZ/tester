@@ -91,59 +91,55 @@ app.post('/api/summarize', async (req, res) => {
         const videoId = ytdl.getVideoID(url);
         console.log('Video ID:', videoId);
 
-        try {
-            // First try to get captions
-            console.log('Attempting to get captions...');
-            const transcript = await YoutubeTranscript.fetchTranscript(videoId);
-            const fullText = transcript.map(part => part.text).join(' ');
-            return await generateSummary(fullText, res);
-        } catch (captionError) {
-            console.log('No captions available, getting video info...');
-            
-            // Get video info
-            const videoInfo = await ytdl.getInfo(videoId);
-            const videoTitle = videoInfo.videoDetails.title;
-            const description = videoInfo.videoDetails.description;
-            const tags = videoInfo.videoDetails.keywords || [];
-            
-            // Create context from available information
-            const context = `
-                Video Title: ${videoTitle}
-                Description: ${description}
-                Tags: ${tags.join(', ')}
-                
-                Please provide a summary based on this information, including:
-                1. Main Topic
-                2. Key Points
-                3. Important Details
-                4. Context
-            `;
+        // Get video info
+        console.log('Fetching video info...');
+        const videoInfo = await ytdl.getInfo(videoId);
+        
+        // Extract all available information
+        const videoTitle = videoInfo.videoDetails.title;
+        const description = videoInfo.videoDetails.description;
+        const tags = videoInfo.videoDetails.keywords || [];
+        const author = videoInfo.videoDetails.author.name;
+        const viewCount = videoInfo.videoDetails.viewCount;
+        const lengthSeconds = videoInfo.videoDetails.lengthSeconds;
+        
+        // Create rich context
+        const context = `
+            Video Title: ${videoTitle}
+            Author: ${author}
+            Duration: ${Math.floor(lengthSeconds / 60)}:${lengthSeconds % 60} minutes
+            Views: ${viewCount}
+            Description: ${description}
+            Tags: ${tags.join(', ')}
+        `;
 
-            return await generateSummary(context, res);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({
-            error: 'Failed to summarize video',
-            details: error.message
-        });
-    }
-});
-
-async function generateSummary(text, res) {
-    try {
         console.log('Generating summary...');
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         
         const prompt = `
-            Please provide a comprehensive summary of this content:
-            ${text.substring(0, 30000)}
+            As an AI assistant, please analyze this YouTube video information and provide a comprehensive summary:
+            ${context}
             
-            Format the summary with:
-            1. Main Topic
-            2. Key Points
-            3. Important Details
-            4. Context
+            Please format your response as follows:
+            
+            TITLE: [Video Title]
+            CREATOR: [Channel Name]
+            
+            MAIN TOPIC:
+            [Explain the main subject matter]
+            
+            KEY POINTS:
+            - [Point 1]
+            - [Point 2]
+            - [Point 3]
+            
+            CONTENT OVERVIEW:
+            [Provide a brief overview based on the description]
+            
+            AUDIENCE ENGAGEMENT:
+            [Mention views and any relevant metrics]
+            
+            Please make the summary informative and well-structured.
         `;
 
         const result = await model.generateContent(prompt);
@@ -152,13 +148,23 @@ async function generateSummary(text, res) {
         console.log('Summary generated successfully');
         res.json({ 
             summary: summary,
-            status: 'success'
+            status: 'success',
+            videoInfo: {
+                title: videoTitle,
+                author: author,
+                duration: `${Math.floor(lengthSeconds / 60)}:${lengthSeconds % 60}`,
+                views: viewCount
+            }
         });
+
     } catch (error) {
-        console.error('Summary generation error:', error);
-        throw error;
+        console.error('Error:', error);
+        res.status(500).json({
+            error: 'Failed to summarize video',
+            details: error.message
+        });
     }
-}
+});
 
 // Start server
 const PORT = process.env.PORT || 3000;
