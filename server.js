@@ -1,19 +1,19 @@
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const cors = require('cors');
+const app = express();  // Initialize Express app FIRST
 require('dotenv').config();
 
-// Create Express app
-const app = express();
-
-// Middleware
+// Middleware setup
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
+// Initialize API key
 const PALM_API_KEY = process.env.PALM_API_KEY;
 console.log('API Key status:', PALM_API_KEY ? 'Present' : 'Missing');
 
+// API endpoints
 app.post('/api/summarize', async (req, res) => {
     try {
         const { url } = req.body;
@@ -80,7 +80,11 @@ app.post('/api/summarize', async (req, res) => {
     }
 });
 
+// Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+
+// Export app for testing
+module.exports = app;
